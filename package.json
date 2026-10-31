@@ -2,7 +2,7 @@
     "name": "B站连播助手",
     "description": "基于 SolidJS 开发的 Bilibili 视频跳转工具",
     "private": true,
-    "version": "1.3.5",
+    "version": "1.3.6",
     "type": "module",
     "scripts": {
         "dev:edge": "wxt -b edge",
