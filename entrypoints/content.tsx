@@ -116,7 +116,9 @@ export default defineContentScript({
                 if (!sc) return;
 
                 // 焦点在搜索框 / 弹幕框 / 评论框等可编辑区域时不触发
-                if (isEditableTarget(event.target)) return;
+                // 注意：评论区的富文本编辑区在 shadow DOM 里，必须把 event 一起传进去，
+                // 靠 composedPath() 穿透 shadow root 才能识别（否则按快捷键会打断打字）
+                if (isEditableTarget(event.target, event)) return;
 
                 // 只匹配用户保存的那一个快捷键
                 if (!matchShortcut(event, sc)) return;

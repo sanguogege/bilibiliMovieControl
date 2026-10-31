@@ -207,18 +207,69 @@ export function matchShortcut(e: KeyboardEvent, shortcut: string): boolean {
 }
 
 /**
- * 判断事件目标是否是可编辑元素。
+ * 单个元素本身是否「可编辑」。
+ *
+ * 注意：`isContentEditable` 会向上继承，所以命中 contenteditable 容器的
+ * 子节点（例如富文本里加了样式的 <span>）也会返回 true。
+ */
+function isEditableElement(el: Element | null | undefined): boolean {
+    if (!el) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+    if (el instanceof HTMLElement && el.isContentEditable) return true;
+    // 少数富文本编辑器把可编辑区做成 role="textbox" 的普通 div
+    if (el.getAttribute("role") === "textbox") return true;
+    return false;
+}
+
+/**
+ * 取真正持有焦点的元素，会逐层穿透 shadow DOM。
+ *
+ * 例如 B 站评论框 <bili-comment-rich-textarea> 的可编辑区在 shadow root 里，
+ * `document.activeElement` 只能拿到宿主元素，穿透后才能拿到内部的
+ * `div[contenteditable="true"]`。
+ */
+export function getDeepActiveElement(): Element | null {
+    let el: Element | null = document.activeElement;
+    while (el?.shadowRoot?.activeElement) {
+        el = el.shadowRoot.activeElement;
+    }
+    return el;
+}
+
+/**
+ * 判断键盘事件是否发生在可编辑区域。
  *
  * 用于避免用户在以下场景按快捷键时误触跳转：
  *   - B 站搜索框 / 弹幕输入框（<input>）
  *   - 评论框（<textarea>）
  *   - 下拉选择（<select>）
  *   - 富文本编辑器（contenteditable="true"）
+ *
+ * 富文本（例如评论区 <bili-comment-rich-textarea>）的编辑区在 shadow DOM 中，
+ * 监听器挂在 window 上时 `event.target` 会被「重定向」成宿主自定义元素，
+ * 既不是 INPUT 也不是 contenteditable，因此必须用 `composedPath()` 穿透
+ * shadow root，或检查穿透后的 activeElement，否则快捷键会在打字时被触发。
  */
-export function isEditableTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-    const tag = target.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
-    if (target.isContentEditable) return true;
-    return false;
+export function isEditableTarget(
+    target: EventTarget | null,
+    event?: Event,
+): boolean {
+    // 1. composedPath() 会给出事件经过的完整路径（composed 事件可穿透 shadow root），
+    //    最内层的元素就是用户真正操作的节点。
+    const path = event?.composedPath?.();
+    if (path && path.length > 0) {
+        for (const node of path) {
+            if (!(node instanceof Element)) continue;
+            // 只看第一个元素节点，避免命中外层普通容器造成误判
+            if (isEditableElement(node)) return true;
+            break;
+        }
+    }
+
+    // 2. 未传 event 时的旧行为：直接看 target 本身
+    if (target instanceof Element && isEditableElement(target)) return true;
+
+    // 3. 兜底：看当前焦点（含 shadow DOM 内部），覆盖事件被重定向到宿主的情况
+    return isEditableElement(getDeepActiveElement());
 }
