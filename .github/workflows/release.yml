@@ -32,6 +32,32 @@ jobs:
         id: get_version
         run: echo "VERSION=$(jq -r .version package.json)" >> $GITHUB_OUTPUT
 
+      - name: Extract release notes from CHANGELOG
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          NOTES="$RUNNER_TEMP/release-notes.md"
+
+          # 取 CHANGELOG.md 中当前版本的整段内容（从 "## <version>" 到下一个 "## " 之前）
+          awk -v version="$VERSION" '
+            { sub(/\r$/, "") }
+            $0 == "## " version || $0 == "## v" version { capture = 1; print; next }
+            capture && /^## / { exit }
+            capture { print }
+          ' CHANGELOG.md > "$NOTES"
+
+          if [ ! -s "$NOTES" ]; then
+            {
+              echo "## v$VERSION"
+              echo
+              echo "本版本暂无 CHANGELOG 记录。"
+            } > "$NOTES"
+            echo "::warning::CHANGELOG.md 中未找到 $VERSION 的条目，已使用占位说明"
+          fi
+
+          echo "本次 Release 说明："
+          cat "$NOTES"
+
       - name: Publish to Stores
         id: changesets
         uses: changesets/action@v1
@@ -58,6 +84,7 @@ jobs:
             .output/*edge*.zip
             .output/*sources*.zip
           tag_name: v${{ steps.get_version.outputs.VERSION }}
-          generate_release_notes: true
+          # Release 说明取 CHANGELOG.md 中对应版本的条目
+          body_path: ${{ runner.temp }}/release-notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
