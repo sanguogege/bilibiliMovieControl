@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildSubmitSegments } from "../utils/jumpPanel";
+import { buildSubmitPlan, buildSubmitSegments } from "../utils/jumpPanel";
 import type { JumpPanelConfig, SkipSegment } from "../types/types";
 
 const segment = (
@@ -86,5 +86,32 @@ describe("buildSubmitSegments", () => {
         );
 
         expect(result[0]).toMatchObject({ start: 10, end: 20 });
+    });
+});
+
+describe("buildSubmitPlan", () => {
+    test("只收集实际参与上传的片段 id，用于上传成功后清理本地列表", () => {
+        const plan = buildSubmitPlan(
+            config([
+                segment("api", 10, 20, "skip", "api"),
+                segment("short", 30, 30.5),
+                segment("ok", 100, 140),
+                segment("next", 900, 0, "next"),
+            ]),
+            1000,
+        );
+
+        expect(plan.segmentIds).toEqual(["ok", "next"]);
+        expect(plan.segments).toHaveLength(2);
+        expect(plan.segments.map((item) => item.category)).toEqual([
+            "sponsor",
+            "outro",
+        ]);
+    });
+
+    test("没有可上传片段时返回空计划", () => {
+        const plan = buildSubmitPlan(config([]), 1000);
+
+        expect(plan).toEqual({ segments: [], segmentIds: [] });
     });
 });

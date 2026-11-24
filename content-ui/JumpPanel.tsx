@@ -9,14 +9,19 @@ import {
 } from "solid-js";
 import { browser } from "wxt/browser";
 import { getBvidFromUrl } from "@/utils/bilibili";
-import { effectiveEnd, MIN_SEGMENT_SECONDS } from "@/utils/segments";
+import {
+    effectiveEnd,
+    MIN_SEGMENT_SECONDS,
+    parseCreatedSegments,
+} from "@/utils/segments";
 import { reasonText } from "@/utils/errors";
 import {
     getOrCreateUserID,
     MIN_USER_ID_LENGTH,
     saveUserID,
 } from "@/utils/userId";
-import { buildSubmitSegments } from "@/utils/jumpPanel";
+import { buildSubmitPlan } from "@/utils/jumpPanel";
+import { classifySubmitResult } from "@/utils/upload";
 import { formatSeconds, parseTimeText } from "@/content-ui/time";
 import { ensurePanelStyles } from "@/content-ui/panelStyles";
 import {
@@ -42,9 +47,25 @@ const KIND_LABELS: Record<SegmentKind, string> = {
     next: "下一P",
 };
 
-const SectionHeader = (props: { title: string; extra?: string }) => (
+const SectionHeader = (props: {
+    title: string;
+    extra?: string;
+    /** 传入后在标题后显示「?」，鼠标悬停时显示该说明 */
+    hint?: string;
+}) => (
     <div class="bmc-section-head">
-        <span>{props.title}</span>
+        <span class="bmc-heading">
+            {props.title}
+            <Show when={props.hint}>
+                <span
+                    class="bmc-help is-hint"
+                    title={props.hint}
+                    aria-label={props.hint}
+                >
+                    ?
+                </span>
+            </Show>
+        </span>
         <Show when={props.extra}>
             <span>{props.extra}</span>
         </Show>
@@ -287,7 +308,8 @@ export function JumpPanel(props: JumpPanelProps) {
         setEditId(null);
         setHasDraft(true);
         setEditKind("skip");
-        setEditing(false);
+        // 新建即进入编辑状态：起止时间默认当前进度、可直接修改
+        setEditing(true);
 
         const start = props.getCurrentTime();
         setEditStartText(formatSeconds(start));
@@ -419,13 +441,10 @@ export function JumpPanel(props: JumpPanelProps) {
                 setHasDraft(false);
             }
             setEditing(false);
-            prepareSubmitTab();
 
-            if (uiState.config.segments.length > 0) {
-                showStatus("已删除片段", "success");
-            } else {
-                closePanelState();
-            }
+            // 列表删空也保持面板打开：prepareSubmitTab 会给出空列表下的新建草稿
+            prepareSubmitTab();
+            showStatus("已删除片段", "success");
         });
     };
 
@@ -500,6 +519,36 @@ export function JumpPanel(props: JumpPanelProps) {
         }
     };
 
+    /**
+     * 上传完成（新建或「已存在」）后清理本地片段：
+     * 这些片段已经在服务端，继续留在手动列表里会和云端片段重复。
+     * 删除失败时保留剩余片段，让用户能自己处理，不把上传结果误报成失败。
+     */
+    const clearUploadedSegments = async (ids: string[]): Promise<boolean> => {
+        const pending = ids.filter((id) =>
+            uiState.config.segments.some((item) => item.id === id),
+        );
+        if (pending.length === 0) return true;
+
+        try {
+            for (const id of pending) {
+                await props.onDeleteSegment(id);
+            }
+        } catch {
+            return false;
+        }
+
+        if (selectedId() && !findSegment(selectedId())) setSelectedId(null);
+        if (editId() && !findSegment(editId())) {
+            setEditId(null);
+            setHasDraft(false);
+        }
+        setEditing(false);
+        prepareSubmitTab();
+
+        return true;
+    };
+
     const handleSubmit = async () => {
         if (submitting()) return;
 
@@ -523,8 +572,8 @@ export function JumpPanel(props: JumpPanelProps) {
             return;
         }
 
-        const segments = buildSubmitSegments(uiState.config, durationNow);
-        if (segments.length === 0) {
+        const plan = buildSubmitPlan(uiState.config, durationNow);
+        if (plan.segments.length === 0) {
             showStatus("当前没有可上传的片段", "error");
             return;
         }
@@ -539,23 +588,50 @@ export function JumpPanel(props: JumpPanelProps) {
                 bvid,
                 videoDuration: durationNow,
                 userID: userID(),
-                segments,
+                segments: plan.segments,
             });
+            const outcome = classifySubmitResult(result);
 
-            if (result.ok) {
+            if (outcome === "failed") {
+                const base = reasonText(result?.reason, "上传失败");
                 showStatus(
-                    `上传成功，共 ${segments.length} 段，等待审核`,
-                    "success",
-                );
-                props.onUploaded?.(result.created);
-                void loadApiSegments(true);
-            } else {
-                const base = reasonText(result.reason, "上传失败");
-                showStatus(
-                    result.message ? `${base}：${result.message}` : base,
+                    result?.message ? `${base}：${result.message}` : base,
                     "error",
                 );
+                return;
             }
+
+            if (outcome === "unknown") {
+                // 请求可能已经到了服务端：保留本地片段，重试时命中 409 再按成功处理
+                showStatus("结果未知，可再上传一次", "error");
+                return;
+            }
+
+            props.onUploaded?.(result?.created);
+
+            // 200 只返回新增片段：少于提交数说明其余片段服务端已存在（部分重复时服务端不会报 409）
+            const created = parseCreatedSegments(result?.created).length;
+            const duplicated =
+                created > 0 ? Math.max(0, plan.segments.length - created) : 0;
+            const cleaned = await clearUploadedSegments(plan.segmentIds);
+
+            if (!cleaned) {
+                showStatus("已上传，但本地片段删除失败", "error");
+            } else if (outcome === "duplicate") {
+                showStatus("服务器已有该片段，按成功处理", "success");
+            } else if (duplicated > 0) {
+                showStatus(
+                    `上传成功：${created} 段新增 / ${duplicated} 段已存在`,
+                    "success",
+                );
+            } else {
+                showStatus(
+                    `上传成功 ${plan.segments.length} 段，等待审核`,
+                    "success",
+                );
+            }
+
+            void loadApiSegments(true);
         } catch {
             showStatus("上传失败：网络异常，请稍后重试", "error");
         } finally {
@@ -723,7 +799,7 @@ export function JumpPanel(props: JumpPanelProps) {
                                 <button
                                     type="button"
                                     class="bmc-help"
-                                    title="查看设置说明"
+                                    title="点击查看设置说明"
                                     onClick={(event) => {
                                         event.preventDefault();
                                         event.stopPropagation();
@@ -886,7 +962,10 @@ export function JumpPanel(props: JumpPanelProps) {
                             <Show when={uiState.config.useCloudSegments}>
                                 <div class="bmc-divider" />
 
-                                <SectionHeader title="私人 ID" />
+                                <SectionHeader
+                                    title="私人 ID"
+                                    hint="首次使用会自动生成并保存在本地；也可以替换成你已有的私人 ID。此 ID 仅用于标识上传者，服务端不会收集其他信息。"
+                                />
 
                                 <input
                                     class="bmc-input"
@@ -902,10 +981,10 @@ export function JumpPanel(props: JumpPanelProps) {
                                     }
                                 />
 
-                                <div class="bmc-hint">
-                                    首次使用会自动生成并保存在本地；也可以替换成你已有的私人
-                                    ID。此ID仅用于标识上传者，服务端不会收集其他信息。
-                                </div>
+                                <SectionHeader
+                                    title="上传"
+                                    hint="上传后需要服务端审核，云端列表可能延迟 1–2 分钟。若上次其实已提交成功、这次提示「服务器已有该片段」，会按成功处理并清理本地片段，不会重复提交。"
+                                />
 
                                 <button
                                     type="button"

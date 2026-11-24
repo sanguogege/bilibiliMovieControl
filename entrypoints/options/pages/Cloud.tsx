@@ -206,6 +206,36 @@ export default function CloudPage() {
             </header>
 
             <div class="card bg-base-100 shadow-sm border border-base-300 mb-8">
+                <div class="card-body gap-4 p-6">
+                    <h2 class="card-title text-base font-bold text-base-content">
+                        使用云端片段：{enabled() ? "已开启" : "已关闭"}
+                    </h2>
+                    <p class="text-sm text-base-content/60 m-0 leading-relaxed">
+                        开启后，intro / sponsor 作为片段跳过，outro 作为下一
+                        P；与手动片段重叠时手动优先；云端有多条下一 P 时只取起点最大的一条。
+                    </p>
+                    <div class="flex items-center">
+                        <div
+                            class={`aura ${
+                                enabled()
+                                    ? "aura-rainbow duration-1000"
+                                    : "text-orange-600"
+                            }`}
+                        >
+                            <button
+                                class={`btn btn-soft ${
+                                    enabled() ? "btn-success" : "btn-error"
+                                }`}
+                                onClick={toggle}
+                            >
+                                {enabled() ? "已开启" : "已关闭"}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card bg-base-100 shadow-sm border border-base-300 mb-8">
                 <div class="card-body gap-3 p-6">
                     <h2 class="card-title text-base font-bold text-base-content">
                         查看指定视频
@@ -237,36 +267,6 @@ export default function CloudPage() {
                     <Show when={bvidError()}>
                         <p class="text-xs text-error m-0">{bvidError()}</p>
                     </Show>
-                </div>
-            </div>
-
-            <div class="card bg-base-100 shadow-sm border border-base-300 mb-8">
-                <div class="card-body gap-4 p-6">
-                    <h2 class="card-title text-base font-bold text-base-content">
-                        使用云端片段：{enabled() ? "已开启" : "已关闭"}
-                    </h2>
-                    <p class="text-sm text-base-content/60 m-0 leading-relaxed">
-                        开启后，intro / sponsor 作为片段跳过，outro 作为下一
-                        P；与手动片段重叠时手动优先；云端有多条下一 P 时只取起点最大的一条。
-                    </p>
-                    <div class="flex items-center">
-                        <div
-                            class={`aura ${
-                                enabled()
-                                    ? "aura-rainbow duration-1000"
-                                    : "text-orange-600"
-                            }`}
-                        >
-                            <button
-                                class={`btn btn-soft ${
-                                    enabled() ? "btn-success" : "btn-error"
-                                }`}
-                                onClick={toggle}
-                            >
-                                {enabled() ? "已开启" : "已关闭"}
-                            </button>
-                        </div>
-                    </div>
                 </div>
             </div>
 

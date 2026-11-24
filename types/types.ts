@@ -214,6 +214,12 @@ export interface SubmitSegmentInput {
     actionType?: string;
 }
 
+/** 一次上传计划：提交参数 + 来源手动片段 id（上传成功后按 id 清理本地片段） */
+export interface SubmitPlan {
+    segments: SubmitSegmentInput[];
+    segmentIds: string[];
+}
+
 export interface SubmitSegmentsParams {
     bvid: string;
     cid?: string;
