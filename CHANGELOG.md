@@ -1,10 +1,26 @@
 # B 站连播助手 (Bilibili Movie Control)
 
+## 1.5.1
+
+### Patch Changes
+
+1. JumpPanel：删除片段后列表为空也不再关闭面板。
+2. 上传：成功后删除对应的本地片段（utils/jumpPanel.ts 新增 buildSubmitPlan 保留片段 id）。
+3. 上传结果分类（utils/upload.ts）：409 按成功处理；timeout/network 提示“结果未知，可再上传一次”；其他错误保留本地片段。
+4. utils/errors.ts：更新 409 / 429 提示文案。
+5. JumpPanel：私人 ID、上传 增加问号悬停提示，新增“上传”小标题，移除原提示段落。
+6. Cloud.tsx：「使用云端片段」与「查看指定视频」两张卡片换位。
+7. panelStyles.ts：片段列表最多 5 行、超出滚动；加右/下 padding、预留滚动条位置；删除按钮加底色；行高固定、不换行，修复悬停抖动。
+8. JumpPanel：点击「＋ 新建片段」直接解锁编辑。
+9. 测试：新增 buildSubmitPlan、classifySubmitResult 用例。
+10. README：补充“上传后移除本地片段”说明。
+11. release.yml：Release 说明改为截取 CHANGELOG 当前版本段落，缺失时用占位文案。
+
 ## 1.5.0
 
 ### Minor Changes
 
-- 统一ui 为solid 1x 版本
+- 统一 ui 为 solid 1x 版本
 - 修复，bug，新增功能
 - 添加进度条样式
 - 添加设置页面其他功能
